@@ -1,8 +1,8 @@
 """Pipeline reproduzível para o Tech Challenge Amazon (Power BI).
 
 Uso:
-    python fase4_amazon/src/dataprep.py --input amazon.csv \
-        --output-dir fase4_amazon/data/processed
+    python src/dataprep.py --input amazon.csv \
+        --output-dir data/processed
 
 Mantém preços em rúpias indianas (INR), sem taxa de câmbio dinâmica.
 """
