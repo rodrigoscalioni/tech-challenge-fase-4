@@ -1,0 +1,52 @@
+name: Prepare Amazon datasets
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/prepare-data.yml"
+      - "src/dataprep.py"
+      - "tests/**"
+      - "requirements.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Configure Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run dataprep tests
+        run: python -m unittest discover -s tests -v
+      - name: Download fixed source dataset
+        shell: bash
+        run: |
+          mkdir -p data/raw
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://raw.githubusercontent.com/VitorLobo383/tech-challenge-amazon/75007e6dc1d6b1ce5c7a0dc6ec66139fc5a1dcd0/data/amazon.csv" \
+            -o data/raw/amazon.csv
+          echo "4ba126c4ba8edd35e62e94ce1c853073d832de380184ab4f5f97d1e314882c77  data/raw/amazon.csv" | sha256sum -c -
+      - name: Prepare Power BI tables
+        run: python src/dataprep.py --input data/raw/amazon.csv --output-dir data/processed
+      - name: Commit processed datasets
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed/products.csv data/processed/review_bundles.csv data/processed/quality_report.json
+          if git diff --cached --quiet; then
+            echo "Processed data unchanged."
+          else
+            git commit -m "data: refresh prepared Amazon datasets"
+            git push
+          fi
