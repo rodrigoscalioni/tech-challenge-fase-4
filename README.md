@@ -14,6 +14,19 @@ python -m unittest discover -s tests -v
 
 Substitua `/caminho/para/amazon.csv` pelo caminho do arquivo fornecido na disciplina. A base original **não** precisa ser publicada no GitHub.
 
+## Power BI — CSVs publicados no GitHub
+
+Os dados tratados são gerados automaticamente pelo [workflow do GitHub Actions](https://github.com/rodrigoscalioni/tech-challenge-fase-4/actions/workflows/prepare-data.yml), que baixa uma versão fixa da base original, valida o SHA-256, executa os testes e publica os resultados em `data/processed/`.
+
+**Conexão:** no Power BI Desktop, selecione **Página Inicial → Obter dados → Web → Básico**. Cole uma URL por vez e escolha **Anônimo** (repositório público):
+
+- **Produtos:** https://raw.githubusercontent.com/rodrigoscalioni/tech-challenge-fase-4/main/data/processed/products.csv
+- **Conjuntos de avaliações:** https://raw.githubusercontent.com/rodrigoscalioni/tech-challenge-fase-4/main/data/processed/review_bundles.csv
+
+Após importar, configure `products[product_id]` (lado 1) → `review_bundles[product_id]` (lado muitos), com filtragem unidirecional. Use `products` para métricas de produtos, sem somar `rating_count` na tabela de reviews. O `quality_report.json` está disponível para auditoria no repositório.
+
+O botão **Atualizar** no Power BI busca novamente os CSVs do GitHub, mas **não** executa o script Python. Para regenerar os CSVs, execute manualmente o workflow na aba Actions ou atualize o código/testes no repositório. Os resultados são publicados automaticamente ao final de uma execução bem-sucedida.
+
 ## Arquivos gerados
 
 - **products.csv**: uma linha por `product_id`. Preços em INR, desconto em escala de 0 a 1, nota, quantidade de avaliações, categorias hierárquicas e alertas de conflito. Use como dimensão/fato de indicadores de produtos.
