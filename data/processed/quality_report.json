@@ -1,0 +1,26 @@
+{
+  "source_file": "amazon.csv",
+  "source_rows": 1465,
+  "unique_products": 1351,
+  "duplicate_product_rows": 114,
+  "products_with_multiple_rows": 92,
+  "review_bundles": 1370,
+  "review_bundles_discarded_as_duplicates_or_empty": 95,
+  "source_invalid_rating_rows": 1,
+  "source_missing_rating_count_rows": 2,
+  "products_missing_rating": 1,
+  "products_missing_rating_count": 2,
+  "products_with_price_conflict": 1,
+  "products_with_discounted_price_conflict": 3,
+  "products_with_rating_count_conflict": 31,
+  "products_with_discount_inconsistency": 0,
+  "products_with_inverted_prices": 0,
+  "currency": "INR",
+  "assumptions": [
+    "rating_count is a snapshot of total product ratings; duplicates are not additive",
+    "one review_bundles row may contain several individual customer reviews",
+    "no dates, sales, revenue or customer exposure are available",
+    "no live INR/BRL conversion; prices remain in the original currency",
+    "when repeated product records conflict, select the row with highest valid rating_count"
+  ]
+}
