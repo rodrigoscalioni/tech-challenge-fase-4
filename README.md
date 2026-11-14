@@ -1,50 +1,61 @@
-# Tech Challenge — Fase 4 | Amazon Dataprep
+# Tech Challenge — Fase 4 | Amazon Insights
 
-Pipeline Python de preparação da base Kaggle *Amazon Sales Dataset* para um dashboard de **Power BI**. Código desenvolvido independentemente, usando as consultas do projeto do grupo como referência de requisitos.
+Preparação da base **Amazon Sales Dataset**, com dados de produtos, preços, descontos, avaliações e comentários para o dashboard em Power BI. Análise acadêmica pontual.
 
-## Execução
-
-Requisitos: Python 3.10+ e `pandas>=2.0,<3.0`. Na raiz do repositório:
+## Pipeline
 
 ```bash
 python -m pip install -r requirements.txt
-python src/dataprep.py --input /caminho/para/amazon.csv --output-dir data/processed
+python src/dataprep.py --input amazon.csv --output-dir data/processed
 python -m unittest discover -s tests -v
 ```
 
-Substitua `/caminho/para/amazon.csv` pelo caminho do arquivo fornecido na disciplina. A base original **não** precisa ser publicada no GitHub.
+Os arquivos processados são publicados na pasta `data/processed` pelo [GitHub Actions](https://github.com/rodrigoscalioni/tech-challenge-fase-4/actions/workflows/prepare-data.yml). A automação utiliza um *commit* fixo do CSV de referência, confere seu SHA-256, executa o tratamento e versiona os resultados. Não é necessário instalar Python no computador para consumi-los no Power BI.
 
-## Power BI — CSVs publicados no GitHub
+## Fontes para o Power BI
 
-Os dados tratados são gerados automaticamente pelo [workflow do GitHub Actions](https://github.com/rodrigoscalioni/tech-challenge-fase-4/actions/workflows/prepare-data.yml), que baixa uma versão fixa da base original, valida o SHA-256, executa os testes e publica os resultados em `data/processed/`.
+No Power BI Desktop use **Obter dados → Web** com autenticação **Anônima** (repositório público):
 
-**Conexão:** no Power BI Desktop, selecione **Página Inicial → Obter dados → Web → Básico**. Cole uma URL por vez e escolha **Anônimo** (repositório público):
+| Tabela | Link direto |
+|---|---|
+| `products` | [products.csv](https://raw.githubusercontent.com/rodrigoscalioni/tech-challenge-fase-4/main/data/processed/products.csv) |
+| `review_bundles` | [review_bundles.csv](https://raw.githubusercontent.com/rodrigoscalioni/tech-challenge-fase-4/main/data/processed/review_bundles.csv) |
+| `temas_avaliacoes` | [temas_avaliacoes.csv](https://raw.githubusercontent.com/rodrigoscalioni/tech-challenge-fase-4/main/data/processed/temas_avaliacoes.csv) |
+| Relatório de qualidade | [quality_report.json](https://github.com/rodrigoscalioni/tech-challenge-fase-4/blob/main/data/processed/quality_report.json) |
 
-- **Produtos:** https://raw.githubusercontent.com/rodrigoscalioni/tech-challenge-fase-4/main/data/processed/products.csv
-- **Conjuntos de avaliações:** https://raw.githubusercontent.com/rodrigoscalioni/tech-challenge-fase-4/main/data/processed/review_bundles.csv
+**Configuração do modelo:**
 
-Após importar, configure `products[product_id]` (lado 1) → `review_bundles[product_id]` (lado muitos), com filtragem unidirecional. Use `products` para métricas de produtos, sem somar `rating_count` na tabela de reviews. O `quality_report.json` está disponível para auditoria no repositório.
+- `products[product_id]` (1) → `review_bundles[product_id]` (*), relacionamento ativo, direção única.
+- `review_bundles[id_bloco_avaliacao]` (1) → `temas_avaliacoes[id_bloco_avaliacao]` (*), relacionamento ativo, direção única.
+- Não criar ligação adicional direta de `products` para `temas_avaliacoes`, para evitar caminhos ambíguos.
+- Formate `desconto_percentual` como percentual. Preços são em **INR**, não BRL.
+- Na importação em português (Brasil), converta colunas decimais **usando localidade Inglês (Estados Unidos)**; a conversão automática pode transformar `4.1` em `41` ou `0.58` em `58`. Confira `rating`, preços e descontos antes de aplicar.
 
-O botão **Atualizar** no Power BI busca novamente os CSVs do GitHub, mas **não** executa o script Python. Para regenerar os CSVs, execute manualmente o workflow na aba Actions ou atualize o código/testes no repositório. Os resultados são publicados automaticamente ao final de uma execução bem-sucedida.
+**Atenção ao Power BI já iniciado:** a v2 traduz os nomes **derivados**. Os nomes de origem como `product_id`, `product_name`, `category`, `rating`, `rating_count`, `review_id` e `review_content` permanecem iguais. Para atualizar consultas antigas, revise as etapas `Tipo Alterado` e qualquer referência aos nomes de campos derivados anteriores. Para recomeçar, importe as três tabelas da v2.
 
-## Arquivos gerados
+## Arquivos e granularidade
 
-- **products.csv**: uma linha por `product_id`. Preços em INR, desconto em escala de 0 a 1, nota, quantidade de avaliações, categorias hierárquicas e alertas de conflito. Use como dimensão/fato de indicadores de produtos.
-- **review_bundles.csv**: conjuntos de comentários, vinculados por `product_id`. Contém os textos originais e tratados, sem presumir que cada linha é uma avaliação individual.
-- **quality_report.json**: contagens, ausências, inconsistências e hipóteses adotadas.
+- `products.csv` — **1.351 produtos únicos**; uma linha por `product_id`. Inclui categorias hierárquicas, preços, descontos, notas, `rating_count` e flags de conflito.
+- `review_bundles.csv` — **1.370 blocos de comentários**; várias linhas podem estar relacionadas ao mesmo produto e cada bloco pode reunir diversas avaliações. Inclui colunas derivadas de rastreio de IDs e de textos compartilhados.
+- `temas_avaliacoes.csv` — registros de **menções de temas por bloco**; um bloco pode conter vários temas e várias palavras do mesmo tema. O campo `tema` é em português e a classificação é por palavras-chave em inglês. **Não** mede sentimento, reviews individuais ou quantidade total de avaliações.
+- `quality_report.json` — auditoria pontual, contagens, conflitos e premissas da preparação.
 
-Power BI: relacione `products[product_id]` (lado **1**) a `review_bundles[product_id]` (lado **muitos**), filtro em direção única de produtos para comentários. Use `products` para KPIs de produtos: misturar com a tabela de comentários pode duplicar contagens e valores. Formate `discount_pct` como percentual. Valores monetários estão em **₹ (INR)**, não em R$.
+### Campos originais e derivados
 
-## Decisões de qualidade e limitações
+Todos os nomes de colunas **originais** do Kaggle são preservados naquelas tabelas em que participam (por exemplo, `product_id`, `rating`, `rating_count`, `review_content`). Todos os campos **criados** pelo tratamento usam português sem acentuação para facilitar DAX/Power Query.
 
-1. Produtos duplicados são consolidados pelo `product_id`. O registro escolhido tem maior `rating_count` válido, seguido de completude e ordem de origem. Não é uma deduplicação temporal, pois não há datas.
-2. `rating_count` é um **estoque de avaliações atribuídas ao produto**, não volume de vendas, visualizações ou comentários coletados neste CSV; **não somamos** valores em duplicatas.
-3. `rating`, preços e descontos inválidos tornam-se ausentes (`NaN`), e são auditados. Não removemos produtos por uma única informação faltante.
-4. Textos do Kaggle frequentemente combinam vários reviews em uma única célula separados por vírgula. Como os comentários também contêm vírgulas, **não separamos** esse conteúdo em supostas avaliações individuais. Analise temas qualitativamente nos *bundles*, sem chamar seu número de "total de avaliações".
-5. Sem data de captura, vendas, receita ou visualizações, não se inferem crescimento, faturamento, causalidade de descontos ou visibilidade real. `rating_count` é apenas um proxy de engajamento.
-6. Conservamos a moeda original (INR), sem conversão online que comprometeria a reprodutibilidade.
-7. O relatório registra conflitos entre observações de um mesmo produto, inclusive preços, descontos e `rating_count`.
+Exemplos: `categoria_nivel_1`, `categoria_final`, `preco_original_inr`, `preco_promocional_inr`, `desconto_percentual`, `desconto_percentual_calculado`, `quantidade_linhas_origem`, `preco_original_divergente`, `id_bloco_avaliacao`, `conteudo_avaliacao_tratado`, `quantidade_ids_avaliacao`, `quantidade_ids_compartilhados`, `hash_conteudo_avaliacao`, `conteudo_compartilhado_entre_produtos`.
 
-## Próxima etapa
+## Decisões analíticas e limitações
 
-Analisar distribuição de ratings, categorias, faixas de desconto, padrões de engajamento e temas textuais; construir páginas do Power BI e documentar recomendações com evidências. Este pacote entrega **somente a preparação**.
+1. Linhas com `product_id` repetido são consolidadas escolhendo a observação com maior `rating_count` válido, seguida de completude e ordem de origem. Sem data de captura, não podemos inferir qual observação é mais recente.
+2. `rating_count` é um contador acumulado por produto, **não** um contador de vendas e **não** o número de reviews disponíveis no CSV. Produtos/variantes podem compartilhar avaliações: não publicar a soma de `rating_count` como volume global de avaliações únicas.
+3. Textos não são divididos por vírgula porque existem vírgulas dentro de avaliações individuais; IDs de reviews podem ser separados e comparados, mas a contagem de IDs na amostra **não equivale** ao estoque de avaliações na Amazon.
+4. Menções de temas são **exploratórias** e podem repetir-se em produtos que compartilham texto. Não equivalem a polaridade positiva/negativa; usar exemplos e interpretação qualitativa.
+5. Valores ausentes permanecem ausentes; não se imputam preços ou notas como zero. Descontos são normalizados para 0–1, com cálculo independente para conferir inconsistências.
+6. A base não contém dados de vendas, receita, exposição, conversão, disponibilidade atual nem série temporal. Não atribuir causalidade aos descontos nem chamar `rating_count` de visibilidade real.
+7. Os valores originais em rúpias indianas (INR) são preservados; não há conversão dependente de cotação diária.
+
+## Escopo
+
+Entrega da disciplina: dashboard Power BI `.pbix` e vídeo executivo de até 7 minutos. O projeto privilegia métricas interpretáveis e decisões acionáveis, com documentação suficiente para explicar os dados, sem construir infraestrutura para manutenção permanente.
