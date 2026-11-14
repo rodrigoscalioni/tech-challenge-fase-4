@@ -43,7 +43,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/processed/products.csv data/processed/review_bundles.csv data/processed/quality_report.json
+          git add data/processed/products.csv data/processed/review_bundles.csv data/processed/temas_avaliacoes.csv data/processed/quality_report.json
           if git diff --cached --quiet; then
             echo "Processed data unchanged."
           else
