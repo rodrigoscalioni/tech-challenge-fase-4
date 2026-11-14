@@ -31,8 +31,6 @@ No Power BI Desktop use **Obter dados → Web** com autenticação **Anônima** 
 - Formate `desconto_percentual` como percentual. Preços são em **INR**, não BRL.
 - Na importação em português (Brasil), converta colunas decimais **usando localidade Inglês (Estados Unidos)**; a conversão automática pode transformar `4.1` em `41` ou `0.58` em `58`. Confira `rating`, preços e descontos antes de aplicar.
 
-**Atenção ao Power BI já iniciado:** a v2 traduz os nomes **derivados**. Os nomes de origem como `product_id`, `product_name`, `category`, `rating`, `rating_count`, `review_id` e `review_content` permanecem iguais. Para atualizar consultas antigas, revise as etapas `Tipo Alterado` e qualquer referência aos nomes de campos derivados anteriores. Para recomeçar, importe as três tabelas da v2.
-
 ## Arquivos e granularidade
 
 - `products.csv` — **1.351 produtos únicos**; uma linha por `product_id`. Inclui categorias hierárquicas, preços, descontos, notas, `rating_count` e flags de conflito.
