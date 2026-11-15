@@ -182,8 +182,8 @@ def prepare(input_path: Path, output_dir: Path) -> dict:
     # Selecionamos o conjunto final de campos: preços, notas, categorias,
     # dados do produto e indicadores que permitem avaliar a qualidade da fonte.
     product_columns = [
-        "product_id", "product_name", "category", "category_level_1",
-        "category_level_2", "category_level_3", "category_level_4",
+        "product_id", "product_name", "category", "categoria_nivel_1",
+        "categoria_nivel_2", "categoria_nivel_3", "categoria_nivel_4",
         "categoria_final", "preco_original_inr", "preco_promocional_inr",
         "desconto_percentual", "desconto_percentual_calculado", "rating",
         "rating_count", "about_product", "img_link", "product_link",
