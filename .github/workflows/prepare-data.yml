@@ -1,49 +1,82 @@
+# Pipeline do GitHub Actions responsável por preparar os dados do Tech Challenge.
+# Ele executa os testes, valida a fonte e publica os CSVs consumidos pelo Power BI.
 name: Prepare Amazon datasets
 
+# Gatilhos de execução: manualmente pela interface do GitHub Actions
+# ou automaticamente quando arquivos relevantes mudam na branch principal.
 on:
   workflow_dispatch:
   push:
+# Apenas alterações enviadas para a branch main iniciam este gatilho.
     branches: [main]
+# Limitamos a execução a mudanças na automação, no código, nos testes
+    # e nas dependências; commits somente dos CSVs não acionam outro ciclo.
     paths:
       - ".github/workflows/prepare-data.yml"
       - "src/dataprep.py"
       - "tests/**"
       - "requirements.txt"
 
+# Permissão necessária para que o workflow registre no repositório
+# os CSVs processados e o relatório de auditoria, quando houver mudanças.
 permissions:
   contents: write
 
+# Um único trabalho realiza todas as etapas em sequência.
+# Se uma etapa falhar, as posteriores não são executadas.
 jobs:
   prepare:
+# O processamento roda em uma máquina Linux temporária fornecida pelo GitHub.
     runs-on: ubuntu-latest
     steps:
+# Faz o checkout do repositório para acessar o código, os testes
+      # e os arquivos de configuração necessários ao processamento.
       - name: Checkout repository
         uses: actions/checkout@v4
+# Instala a versão escolhida do Python e habilita o cache de pacotes pip
+      # para acelerar instalações posteriores, sem afetar os resultados.
       - name: Configure Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
+# Instala as bibliotecas declaradas em requirements.txt, como pandas.
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
+# Executa os testes de regressão antes de processar a fonte oficial.
+      # O parâmetro -v mostra o resultado de cada teste no log da execução.
       - name: Run dataprep tests
         run: python -m unittest discover -s tests -v
+# Obtém uma versão específica do CSV original, identificada pelo commit
+      # da fonte. Isso evita mudanças inesperadas no conjunto analisado.
       - name: Download fixed source dataset
         shell: bash
         run: |
+# Prepara a pasta local onde a base bruta será armazenada.
           mkdir -p data/raw
+# Faz o download do CSV. As opções de retry permitem novas tentativas
+          # em caso de falha transitória de conexão.
           curl -fL --retry 3 --retry-delay 2 \
             "https://raw.githubusercontent.com/VitorLobo383/tech-challenge-amazon/75007e6dc1d6b1ce5c7a0dc6ec66139fc5a1dcd0/data/amazon.csv" \
             -o data/raw/amazon.csv
+# Confere o SHA-256 esperado da fonte. Se os bytes forem diferentes,
+          # a etapa falha e o pipeline interrompe a geração dos dados.
           echo "4ba126c4ba8edd35e62e94ce1c853073d832de380184ab4f5f97d1e314882c77  data/raw/amazon.csv" | sha256sum -c -
+# Executa src/dataprep.py, responsável por produzir products.csv,
+      # review_bundles.csv, temas_avaliacoes.csv e quality_report.json.
       - name: Prepare Power BI tables
         run: python src/dataprep.py --input data/raw/amazon.csv --output-dir data/processed
+# Publica os arquivos tratados no próprio repositório. A identidade
+      # github-actions[bot] indica que o commit foi feito pela automação.
       - name: Commit processed datasets
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+# Adiciona ao controle de versão somente as três bases e a auditoria.
           git add data/processed/products.csv data/processed/review_bundles.csv data/processed/temas_avaliacoes.csv data/processed/quality_report.json
+# Evita gerar commits desnecessários quando os arquivos não mudaram.
+          # Caso exista diferença, registra e envia os resultados para main.
           if git diff --cached --quiet; then
             echo "Processed data unchanged."
           else
