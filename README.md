@@ -53,7 +53,3 @@ Exemplos: `categoria_nivel_1`, `categoria_final`, `preco_original_inr`, `preco_p
 5. Valores ausentes permanecem ausentes; não se imputam preços ou notas como zero. Descontos são normalizados para 0–1, com cálculo independente para conferir inconsistências.
 6. A base não contém dados de vendas, receita, exposição, conversão, disponibilidade atual nem série temporal. Não atribuir causalidade aos descontos nem chamar `rating_count` de visibilidade real.
 7. Os valores originais em rúpias indianas (INR) são preservados; não há conversão dependente de cotação diária.
-
-## Escopo
-
-Entrega da disciplina: dashboard Power BI `.pbix` e vídeo executivo de até 7 minutos. O projeto privilegia métricas interpretáveis e decisões acionáveis, com documentação suficiente para explicar os dados, sem construir infraestrutura para manutenção permanente.
