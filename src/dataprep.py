@@ -29,35 +29,9 @@ REQUIRED_COLUMNS = {
 OPTIONAL_COLUMNS = ("about_product", "img_link", "product_link")
 
 
-# Só campos derivados são traduzidos; os nomes de origem permanecem inalterados.
-# Somente colunas derivadas recebem nomes em português. Nomes originais,
-# como product_id, product_name e rating_count, são preservados em inglês.
-RENOMEAR_PRODUTOS = {
-    "category_level_1": "categoria_nivel_1",
-    "category_level_2": "categoria_nivel_2",
-    "category_level_3": "categoria_nivel_3",
-    "category_level_4": "categoria_nivel_4",
-    "category_leaf": "categoria_final",
-    "actual_price_inr": "preco_original_inr",
-    "discounted_price_inr": "preco_promocional_inr",
-    "discount_pct": "desconto_percentual",
-    "discount_pct_calculated": "desconto_percentual_calculado",
-    "source_rows": "quantidade_linhas_origem",
-    "price_conflict": "preco_original_divergente",
-    "discounted_price_conflict": "preco_promocional_divergente",
-    "rating_count_conflict": "quantidade_avaliacoes_divergente",
-    "discount_conflict": "desconto_divergente",
-    "discount_inconsistent": "desconto_inconsistente",
-    "price_inverted": "preco_invertido",
-    "source_row": "linha_origem",
-}
-# Padronização dos nomes derivados específicos dos blocos de avaliações.
-RENOMEAR_AVALIACOES = {
-    "source_row": "linha_origem",
-    "review_bundle_key": "id_bloco_avaliacao",
-    "review_title_clean": "titulo_avaliacao_tratado",
-    "review_content_clean": "conteudo_avaliacao_tratado",
-}
+# Os nomes originais da Amazon permanecem em inglês.
+# Os campos derivados são criados diretamente em português,
+# evitando mapeamentos e renomeações intermediárias.
 
 # Menções temáticas exploratórias, sem classificar sentimentos ou avaliações individuais.
 # Dicionário de classificação temática: cada chave é um tema do dashboard e
@@ -123,46 +97,47 @@ def prepare(input_path: Path, output_dir: Path) -> dict:
     # Conservamos raw intacta; as transformações ocorrem sobre uma cópia.
     df = raw.copy()
     # Identificamos a linha no CSV original para manter rastreabilidade.
-    df["source_row"] = range(2, len(df) + 2)  # número da linha no CSV, com cabeçalho
+    df["linha_origem"] = range(2, len(df) + 2)  # número da linha no CSV, com cabeçalho
     # Eliminamos espaços extras nas bordas e convertemos campos vazios em ausentes.
     for col in REQUIRED_COLUMNS | set(OPTIONAL_COLUMNS):
         df[col] = df[col].astype("string").str.strip()
         df[col] = df[col].replace("", pd.NA)
 
-    # Normalizamos preços em rúpias indianas (INR), desconto como fração 0–1,
-    # notas como números de 0–5 e rating_count como quantidade histórica.
-    df["actual_price_inr"] = to_numeric(df["actual_price"], r"[₹,\s]")
-    df["discounted_price_inr"] = to_numeric(df["discounted_price"], r"[₹,\s]")
-    df["discount_pct"] = to_numeric(df["discount_percentage"], r"[%\s]") / 100
-    df["rating_value"] = to_numeric(df["rating"], r"\s")
-    df["rating_count_value"] = to_numeric(df["rating_count"], r"[,\s]")
+    # Criamos preços e descontos derivados diretamente em português (valores em
+    # INR e percentual de desconto como fração 0–1). As colunas originais rating
+    # e rating_count preservam os nomes e passam a conter valores numéricos.
+    df["preco_original_inr"] = to_numeric(df["actual_price"], r"[₹,\s]")
+    df["preco_promocional_inr"] = to_numeric(df["discounted_price"], r"[₹,\s]")
+    df["desconto_percentual"] = to_numeric(df["discount_percentage"], r"[%\s]") / 100
+    df["rating"] = to_numeric(df["rating"], r"\s")
+    df["rating_count"] = to_numeric(df["rating_count"], r"[,\s]")
 
     # Valores inválidos são ausentes, não zeros, para não distorcer indicadores.
     # Preços não positivos, percentuais fora de 0–100%, notas fora de 0–5 e
     # contadores negativos não são substituídos por zero: ficam ausentes.
-    for col in ("actual_price_inr", "discounted_price_inr"):
+    for col in ("preco_original_inr", "preco_promocional_inr"):
         df.loc[df[col].le(0), col] = float("nan")
-    df.loc[~df["discount_pct"].between(0, 1), "discount_pct"] = float("nan")
-    df.loc[~df["rating_value"].between(0, 5), "rating_value"] = float("nan")
-    df.loc[df["rating_count_value"].lt(0), "rating_count_value"] = float("nan")
+    df.loc[~df["desconto_percentual"].between(0, 1), "desconto_percentual"] = float("nan")
+    df.loc[~df["rating"].between(0, 5), "rating"] = float("nan")
+    df.loc[df["rating_count"].lt(0), "rating_count"] = float("nan")
 
-    # A hierarquia chega em uma única string separada por '|'.
-    # Extraímos os quatro primeiros níveis e o último nível disponível.
+    # A categoria original chega em uma string separada por '|'.
+    # Criamos diretamente categoria_nivel_1 a categoria_nivel_4 e categoria_final.
     levels = df["category"].fillna("").str.split("|", regex=False)
     for i in range(1, 5):
-        df[f"category_level_{i}"] = levels.str.get(i - 1).replace("", pd.NA)
-    df["category_leaf"] = levels.apply(lambda xs: xs[-1] if xs else "")
+        df[f"categoria_nivel_{i}"] = levels.str.get(i - 1).replace("", pd.NA)
+    df["categoria_final"] = levels.apply(lambda xs: xs[-1] if xs else "")
 
     # Conferência independente do desconto anunciado:
     # desconto calculado = 1 - preço promocional / preço original.
     # Marcamos divergência superior a 2 pontos percentuais e preço invertido.
-    df["discount_pct_calculated"] = (
-        1 - df["discounted_price_inr"] / df["actual_price_inr"]
-    ).where(df["actual_price_inr"].gt(0))
-    df["discount_inconsistent"] = (
-        (df["discount_pct"] - df["discount_pct_calculated"]).abs().gt(0.02)
+    df["desconto_percentual_calculado"] = (
+        1 - df["preco_promocional_inr"] / df["preco_original_inr"]
+    ).where(df["preco_original_inr"].gt(0))
+    df["desconto_inconsistente"] = (
+        (df["desconto_percentual"] - df["desconto_percentual_calculado"]).abs().gt(0.02)
     ).fillna(False)
-    df["price_inverted"] = df["discounted_price_inr"].gt(df["actual_price_inr"]).fillna(False)
+    df["preco_invertido"] = df["preco_promocional_inr"].gt(df["preco_original_inr"]).fillna(False)
 
     # Um produto pode aparecer em várias linhas de origem. Não somamos rating_count,
     # pois é um contador histórico do produto, não uma contagem de linhas ou vendas.
@@ -171,15 +146,15 @@ def prepare(input_path: Path, output_dir: Path) -> dict:
     # A completude conta quantos campos relevantes foram preenchidos e será
     # usada apenas para desempatar registros com o mesmo rating_count.
     completeness_fields = [
-        "actual_price_inr", "discounted_price_inr", "discount_pct",
-        "rating_value", "rating_count_value", "product_name", "category",
+        "preco_original_inr", "preco_promocional_inr", "desconto_percentual",
+        "rating", "rating_count", "product_name", "category",
     ]
     df["completeness"] = df[completeness_fields].notna().sum(axis=1)
     # Ordenamos pela preferência do registro e descartamos product_id repetido.
     # O resultado contém exatamente uma linha por identificador de produto.
     selected = (
         df.sort_values(
-            ["product_id", "rating_count_value", "completeness", "source_row"],
+            ["product_id", "rating_count", "completeness", "linha_origem"],
             ascending=[True, False, False, True], na_position="last", kind="stable",
         )
         .drop_duplicates("product_id", keep="first")
@@ -190,12 +165,12 @@ def prepare(input_path: Path, output_dir: Path) -> dict:
     # A auditoria consulta TODAS as observações de cada produto, mesmo após
     # a deduplicação, para sinalizar divergências entre os registros originais.
     grp = df.groupby("product_id", dropna=False)
-    observations = grp.size().rename("source_rows")
+    observations = grp.size().rename("quantidade_linhas_origem")
     conflict_cols = {
-        "actual_price_inr": "price_conflict",
-        "discounted_price_inr": "discounted_price_conflict",
-        "rating_count_value": "rating_count_conflict",
-        "discount_pct": "discount_conflict",
+        "preco_original_inr": "preco_original_divergente",
+        "preco_promocional_inr": "preco_promocional_divergente",
+        "rating_count": "quantidade_avaliacoes_divergente",
+        "desconto_percentual": "desconto_divergente",
     }
     # Se um campo apresentar mais de um valor distinto para o mesmo produto,
     # sinalizamos um conflito e também registramos a quantidade de linhas de origem.
@@ -209,24 +184,22 @@ def prepare(input_path: Path, output_dir: Path) -> dict:
     product_columns = [
         "product_id", "product_name", "category", "category_level_1",
         "category_level_2", "category_level_3", "category_level_4",
-        "category_leaf", "actual_price_inr", "discounted_price_inr",
-        "discount_pct", "discount_pct_calculated", "rating_value",
-        "rating_count_value", "about_product", "img_link", "product_link",
-        "source_rows", "price_conflict", "discounted_price_conflict",
-        "rating_count_conflict", "discount_conflict", "discount_inconsistent",
-        "price_inverted", "source_row",
+        "categoria_final", "preco_original_inr", "preco_promocional_inr",
+        "desconto_percentual", "desconto_percentual_calculado", "rating",
+        "rating_count", "about_product", "img_link", "product_link",
+        "quantidade_linhas_origem", "preco_original_divergente", "preco_promocional_divergente",
+        "quantidade_avaliacoes_divergente", "desconto_divergente", "desconto_inconsistente",
+        "preco_invertido", "linha_origem",
     ]
     # BASE 1 — products: granularidade de um registro por product_id.
-    products = selected[product_columns].rename(
-        columns={"rating_value": "rating", "rating_count_value": "rating_count", **RENOMEAR_PRODUTOS}
-    )
+    products = selected[product_columns].copy()
 
     # A base original agrupa IDs, títulos e textos de avaliações na mesma célula.
     # Como os textos podem conter vírgulas comuns, não os dividimos por vírgula.
     # Cada linha será um BLOCO de avaliações, não uma avaliação individual.
     # BASE 2 — review_bundles: granularidade de um bloco textual por registro
     # distinto de produto, IDs, título e conteúdo de avaliação.
-    reviews = df[["source_row", "product_id", "review_id", "review_title", "review_content"]].copy()
+    reviews = df[["linha_origem", "product_id", "review_id", "review_title", "review_content"]].copy()
     # Removemos duplicatas exatas desse conjunto de campos, preservando
     # comentários diferentes associados ao mesmo produto.
     reviews = reviews.drop_duplicates(
@@ -234,13 +207,14 @@ def prepare(input_path: Path, output_dir: Path) -> dict:
     )
     # Blocos sem texto não podem ser classificados em assuntos.
     reviews = reviews.loc[reviews["review_content"].notna()].copy()
-    # Construímos versões limpas do título e do conteúdo sem apagar os originais.
-    reviews["review_title_clean"] = reviews["review_title"].map(clean_review_text)
-    reviews["review_content_clean"] = reviews["review_content"].map(clean_review_text)
-    # A chave exclusiva do bloco permite o relacionamento um-para-muitos
-    # entre review_bundles e temas_avaliacoes.
-    reviews.insert(0, "review_bundle_key", range(1, len(reviews) + 1))
-    reviews = reviews.sort_values(["product_id", "review_bundle_key"], kind="stable")
+    # Criamos diretamente titulo_avaliacao_tratado e conteudo_avaliacao_tratado,
+    # preservando os campos originais em inglês.
+    reviews["titulo_avaliacao_tratado"] = reviews["review_title"].map(clean_review_text)
+    reviews["conteudo_avaliacao_tratado"] = reviews["review_content"].map(clean_review_text)
+    # Criamos id_bloco_avaliacao diretamente em português, permitindo o
+    # relacionamento um-para-muitos com temas_avaliacoes.
+    reviews.insert(0, "id_bloco_avaliacao", range(1, len(reviews) + 1))
+    reviews = reviews.sort_values(["product_id", "id_bloco_avaliacao"], kind="stable")
 
     # IDs podem ser separados por vírgula; textos NÃO são separados.
     # Os identificadores de avaliações PODEM ser separados por vírgulas,
@@ -264,7 +238,7 @@ def prepare(input_path: Path, output_dir: Path) -> dict:
     # SHA-256 gera uma impressão digital do texto, ignorando diferenças de
     # maiúsculas/minúsculas. Textos idênticos produzem o mesmo hash e podem
     # ser contados uma única vez com DISTINCTCOUNT no Power BI.
-    reviews["hash_conteudo_avaliacao"] = reviews["review_content_clean"].map(
+    reviews["hash_conteudo_avaliacao"] = reviews["conteudo_avaliacao_tratado"].map(
         lambda txt: hashlib.sha256(txt.casefold().encode("utf-8")).hexdigest()
     )
     # Contamos quantos produtos apresentam o mesmo conteúdo textual.
@@ -282,7 +256,7 @@ def prepare(input_path: Path, output_dir: Path) -> dict:
     # Percorremos os blocos de avaliação individualmente.
     for registro in reviews.itertuples(index=False):
         # casefold normaliza maiúsculas e minúsculas para a busca das regex.
-        texto = registro.review_content_clean.casefold()
+        texto = registro.conteudo_avaliacao_tratado.casefold()
         # Para o mesmo texto, verificamos TODOS os nove temas cadastrados.
         for tema, padroes in TEMAS.items():
             # re.search identifica se cada padrão ocorre pelo menos uma vez.
@@ -293,7 +267,7 @@ def prepare(input_path: Path, output_dir: Path) -> dict:
             # Não inferimos elogio, crítica, emoção nem nota individual.
             if termos:
                 linhas_temas.append({
-                    "id_bloco_avaliacao": registro.review_bundle_key,
+                    "id_bloco_avaliacao": registro.id_bloco_avaliacao,
                     "product_id": registro.product_id,
                     "hash_conteudo_avaliacao": registro.hash_conteudo_avaliacao,
                     "tema": tema,
@@ -306,9 +280,6 @@ def prepare(input_path: Path, output_dir: Path) -> dict:
         "id_bloco_avaliacao", "product_id", "hash_conteudo_avaliacao", "tema",
         "quantidade_termos_encontrados", "metodo_classificacao",
     ])
-    # Por último, aplicamos os nomes em português aos campos derivados dos blocos.
-    reviews = reviews.rename(columns=RENOMEAR_AVALIACOES)
-
     # Relação no Power BI: products[product_id] (1) -> (*) review_bundles[product_id].
     # Verificações mínimas de integridade: identificador de produto único e
     # todos os blocos vinculados a um produto existente.
@@ -325,8 +296,8 @@ def prepare(input_path: Path, output_dir: Path) -> dict:
         "produtos_com_multiplas_linhas": int(products["quantidade_linhas_origem"].gt(1).sum()),
         "blocos_avaliacoes": int(len(reviews)),
         "blocos_desconsiderados_duplicados_ou_vazios": int(len(df) - len(reviews)),
-        "linhas_origem_nota_invalida": int(df["rating_value"].isna().sum()),
-        "linhas_origem_qtde_avaliacoes_ausente": int(df["rating_count_value"].isna().sum()),
+        "linhas_origem_nota_invalida": int(df["rating"].isna().sum()),
+        "linhas_origem_qtde_avaliacoes_ausente": int(df["rating_count"].isna().sum()),
         "produtos_sem_nota": int(products["rating"].isna().sum()),
         "produtos_sem_qtde_avaliacoes": int(products["rating_count"].isna().sum()),
         "produtos_com_preco_original_divergente": int(products["preco_original_divergente"].sum()),
